@@ -1569,7 +1569,7 @@ int transfer_source_tau_size(
 
         /* value of l at which the code switches to Limber approximation
            (necessary for next step) */
-        l_limber=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_mean[bin];
+        l_limber=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_functions[bin].selection_mean;
 
         /* check that bessel well sampled, if not define finer sampling
            overwriting the previous one.
@@ -1622,7 +1622,7 @@ int transfer_source_tau_size(
 
       /* value of l at which the code switches to Limber approximation
          (necessary for next step) */
-      l_limber=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_mean[bin];
+      l_limber=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_functions[bin].selection_mean;
 
       /* check that bessel well sampled, if not define finer sampling
          overwriting the previous one.
@@ -2190,24 +2190,7 @@ int transfer_sources(
             rescaling=0.;
           }
           else {
-            switch (pba->sgnK){
-            case 1:
-              rescaling = sqrt(pba->K)
-                *sin((tau_rec-tau)*sqrt(pba->K))
-                /sin((tau0-tau)*sqrt(pba->K))
-                /sin((tau0-tau_rec)*sqrt(pba->K));
-              break;
-            case 0:
-              rescaling = (tau_rec-tau)/(tau0-tau)/(tau0-tau_rec);
-              break;
-            case -1:
-              rescaling = sqrt(-pba->K)
-                *sinh((tau_rec-tau)*sqrt(-pba->K))
-                /sinh((tau0-tau)*sqrt(-pba->K))
-                /sinh((tau0-tau_rec)*sqrt(-pba->K));
-              break;
-            }
-            // Note: until 2.4.3 there was a bug here: the curvature effects had been ommitted.
+            rescaling = (tau_rec-tau)/(tau0-tau)/(tau0-tau_rec);
           }
 
           /* copy from input array to output array */
@@ -2280,10 +2263,6 @@ int transfer_sources(
                                                tau_size),
                    ptr->error_message,
                    ptr->error_message);
-
-        class_test(tau0 - tau0_minus_tau[0] > ppt->tau_sampling[ppt->tau_size-1],
-                   ptr->error_message,
-                   "this should not happen, there was probably a rounding error, if this error occured, then this must be coded more carefully");
 
         /* resample the source at those times */
         class_call(transfer_source_resample(ppr,
@@ -2404,7 +2383,7 @@ int transfer_sources(
           */
 
           if (_index_tt_in_range_(ptr->index_tt_density, ppt->selection_num, ppt->has_nc_density))
-            rescaling = ptr->bias*selection[index_tau];
+            rescaling = ppt->selection_functions[bin].bias * selection[index_tau];
 
           /* redhsift space distorsion source = - [- (dz/dtau) W(z)] * (k/H) * theta(k,tau) */
 
@@ -2422,11 +2401,11 @@ int transfer_sources(
                                               /pvecback[pba->index_bg_a]
                                               /pvecback[pba->index_bg_H]
                                               /pvecback[pba->index_bg_H]
-                                              +(2.-5.*ptr->s_bias)
+                                              +(2.-5.*ppt->selection_functions[bin].s_bias)
                                               /tau0_minus_tau[index_tau]
                                               /pvecback[pba->index_bg_a]
                                               /pvecback[pba->index_bg_H]
-                                              +5.*ptr->s_bias
+                                              +5.*ppt->selection_functions[bin].s_bias
                                               -f_evo
                                               )/ptr->k[index_md][index_q];
 
@@ -2441,7 +2420,7 @@ int transfer_sources(
                                                /pvecback[pba->index_bg_a]
                                                /pvecback[pba->index_bg_H]
                                                /pvecback[pba->index_bg_H]
-                                               +(2.-5.*ptr->s_bias)
+                                               +(2.-5.*ppt->selection_functions[bin].s_bias)
                                                /tau0_minus_tau[index_tau]
                                                /pvecback[pba->index_bg_a]
                                                /pvecback[pba->index_bg_H]
@@ -2606,7 +2585,7 @@ int transfer_sources(
                 if (_index_tt_in_range_(ptr->index_tt_lensing, ppt->selection_num, ppt->has_cl_lensing_potential)) {
 
                   rescaling +=
-                    (2.-5.*ptr->s_bias)/2.
+                    (2.-5.*ppt->selection_functions[bin].s_bias)/2.
                     *(tau0_minus_tau[index_tau]-tau0_minus_tau_lensing_sources[index_tau_sources])
                     /tau0_minus_tau[index_tau]
                     /tau0_minus_tau_lensing_sources[index_tau_sources]
@@ -2616,8 +2595,8 @@ int transfer_sources(
 
                 if (_index_tt_in_range_(ptr->index_tt_nc_lens, ppt->selection_num, ppt->has_nc_lens)) {
 
-                  rescaling -=
-                    (2.-5.*ptr->s_bias)/2.
+                  rescaling +=
+                    -(2.-5.*ppt->selection_functions[bin].s_bias)/2.
                     *(tau0_minus_tau[index_tau]-tau0_minus_tau_lensing_sources[index_tau_sources])
                     /tau0_minus_tau[index_tau]
                     /tau0_minus_tau_lensing_sources[index_tau_sources]
@@ -2628,7 +2607,7 @@ int transfer_sources(
                 if (_index_tt_in_range_(ptr->index_tt_nc_g4, ppt->selection_num, ppt->has_nc_gr)) {
 
                   rescaling +=
-                    (2.-5.*ptr->s_bias)
+                    (2.-5.*ppt->selection_functions[bin].s_bias)
                     /tau0_minus_tau_lensing_sources[index_tau_sources]
                     * selection[index_tau_sources]
                     * w_trapz_lensing_sources[index_tau_sources];
@@ -2651,7 +2630,7 @@ int transfer_sources(
 
                   if ((ptr->has_nz_evo_file == _TRUE_) || (ptr->has_nz_evo_analytic == _TRUE_)) {
 
-                    f_evo = 2./pvecback[pba->index_bg_H]/pvecback[pba->index_bg_a]/tau0_minus_tau_lensing_sources[index_tau_sources]
+                    f_evo = 2./pvecback[pba->index_bg_H]/pvecback[pba->index_bg_a]/tau0_minus_tau[index_tau]
                       + pvecback[pba->index_bg_H_prime]/pvecback[pba->index_bg_H]/pvecback[pba->index_bg_H]/pvecback[pba->index_bg_a];
 
                     z = pba->a_today/pvecback[pba->index_bg_a]-1.;
@@ -2702,11 +2681,11 @@ int transfer_sources(
                      /pvecback[pba->index_bg_a]
                      /pvecback[pba->index_bg_H]
                      /pvecback[pba->index_bg_H]
-                     + (2.-5.*ptr->s_bias)
+                     + (2.-5.*ppt->selection_functions[bin].s_bias)
                      /tau0_minus_tau_lensing_sources[index_tau_sources]
                      /pvecback[pba->index_bg_a]
                      /pvecback[pba->index_bg_H]
-                     + 5.*ptr->s_bias
+                     + 5.*ppt->selection_functions[bin].s_bias
                      - f_evo)
                     * ptr->k[index_md][index_q]
                     * selection[index_tau_sources]
@@ -2787,70 +2766,37 @@ int transfer_selection_function(
                                 double * selection) {
 
   double x;
+  int i;
   double dNdz;
   double dln_dNdz_dz;
   int last_index;
 
   /* trivial dirac case */
   if (ppt->selection==dirac) {
-
     *selection=1.;
-
-    return _SUCCESS_;
   }
-
-  /* difference between z and the bin center (we can take the absolute
-     value as long as all selection functions are symmetric around
-     x=0) */
-  x=fabs(z-ppt->selection_mean[bin]);
 
   /* gaussian case (the function is anyway normalized later
      automatically, but could not resist to normalize it already
      here) */
   if (ppt->selection==gaussian) {
+    /* difference between z and the bin center (we can take the absolute
+    value as long as all selection functions are symmetric around x=0) */
+    x=fabs(z-ppt->selection_functions[bin].selection_mean);
+    *selection = exp(-0.5*pow(x/ppt->selection_functions[bin].selection_width,2))
+      /ppt->selection_functions[bin].selection_width/sqrt(2.*_PI_);
+  }
 
-    *selection = exp(-0.5*pow(x/ppt->selection_width[bin],2))
-      /ppt->selection_width[bin]/sqrt(2.*_PI_);
-
-    if ((ptr->has_nz_file == _TRUE_) || (ptr->has_nz_analytic == _TRUE_)) {
-
-      if (ptr->has_nz_file == _TRUE_) {
-
-        class_test((z<ptr->nz_z[0]) || (z>ptr->nz_z[ptr->nz_size-1]),
-                   ptr->error_message,
-                   "Your input file for the selection function only covers the redhsift range [%f : %f]. However, your input for the selection function requires z=%f",
-                   ptr->nz_z[0],
-                   ptr->nz_z[ptr->nz_size-1],
-                   z);
-
-        class_call(array_interpolate_spline(
-                                            ptr->nz_z,
-                                            ptr->nz_size,
-                                            ptr->nz_nz,
-                                            ptr->nz_ddnz,
-                                            1,
-                                            z,
-                                            &last_index,
-                                            &dNdz,
-                                            1,
-                                            ptr->error_message),
-                   ptr->error_message,
-                   ptr->error_message);
-      }
-      else {
-
-        class_call(transfer_dNdz_analytic(ptr,
-                                          z,
-                                          &dNdz,
-                                          &dln_dNdz_dz),
-                   ptr->error_message,
-                   ptr->error_message);
-      }
-
-      *selection *= dNdz;
+  if (ppt->selection==multigaussian) {
+    int kk;
+    double temp = 0.0;
+    for (kk=0; kk<ppt->selection_functions[bin].gaussian_num; kk++){
+      x=fabs(z-ppt->selection_functions[bin].gaussian_means[kk]);
+      temp += ppt->selection_functions[bin].gaussian_amp[kk]
+        *exp(-0.5*pow(x/ppt->selection_functions[bin].gaussian_widths[kk],2));
+        //ppt->selection_functions[bin].gaussian_widths[kk]/sqrt(2.*_PI_);
     }
-
-    return _SUCCESS_;
+    *selection = temp ;/// norm;
   }
 
   /* top-hat case, with smoothed edges. The problem with sharp edges
@@ -2865,50 +2811,101 @@ int transfer_selection_function(
      resolution along k. */
 
   if (ppt->selection==tophat) {
-
     /* selection function, centered on z=mean (i.e. on x=0), equal to
        one around x=0, with tanh step centered on x=width, of width
        delta x = 0.1*width
     */
-    *selection=(1.-tanh((x-ppt->selection_width[bin])/(ppr->selection_tophat_edge*ppt->selection_width[bin])))/2.;
-
-    if ((ptr->has_nz_file == _TRUE_) || (ptr->has_nz_analytic == _TRUE_)) {
-
-      if (ptr->has_nz_file == _TRUE_) {
-
-        class_call(array_interpolate_spline(
-                                            ptr->nz_z,
-                                            ptr->nz_size,
-                                            ptr->nz_nz,
-                                            ptr->nz_ddnz,
-                                            1,
-                                            z,
-                                            &last_index,
-                                            &dNdz,
-                                            1,
-                                            ptr->error_message),
-                   ptr->error_message,
-                   ptr->error_message);
-      }
-      else {
-
-        class_call(transfer_dNdz_analytic(ptr,
-                                          z,
-                                          &dNdz,
-                                          &dln_dNdz_dz),
-                   ptr->error_message,
-                   ptr->error_message);
-      }
-
-      *selection *= dNdz;
-    }
-
-    return _SUCCESS_;
+    *selection=(1.-tanh((x-ppt->selection_functions[bin].selection_width)/(ppr->selection_tophat_edge*ppt->selection_functions[bin].selection_width)))/2.;
   }
 
+  /* Histogram case
+  */
+  if (ppt->selection==histogram){
+
+    if(z <= ppt->selection_functions[bin].z_min || z > ppt->selection_functions[bin].z_max ){
+      *selection = 0.0;
+    }
+    else
+    {
+
+      class_test((z<ppt->selection_functions[bin].hist_z[0]) ||
+        (z>ppt->selection_functions[bin].hist_z[ppt->selection_functions[bin].hist_size-1]),
+                 ptr->error_message,
+                 "Your input file for the selection function only covers the redhsift range [%f : %f]. However, your input for the selection function requires z=%f",
+                 ppt->selection_functions[bin].hist_z[0],
+                 ppt->selection_functions[bin].hist_z[ppt->selection_functions[bin].hist_size-1],
+                 z);
+      class_call(array_interpolate_spline(
+                                          ppt->selection_functions[bin].hist_z,
+                                          ppt->selection_functions[bin].hist_size,
+                                          ppt->selection_functions[bin].hist_nz,
+                                          ppt->selection_functions[bin].hist_ddnz,
+                                          1,
+                                          z,
+                                          &last_index,
+                                          &dNdz,
+                                          1,
+                                          ptr->error_message),
+                 ptr->error_message,
+                 ptr->error_message);
+
+      /*
+      FILE *fi;
+      char fname[100];
+      sprintf(fname,"%s%d%s","test_",bin+1,".txt");
+      fi = fopen(fname, "a");
+      fprintf(fi, "%.14f %.14f\n", z, dNdz);
+      fclose(fi);
+      */
+
+      *selection = MAX(dNdz, 0.0);
+
+    }
+
+  }
+
+  if ((ptr->has_nz_file == _TRUE_) || (ptr->has_nz_analytic == _TRUE_)) {
+
+    if (ptr->has_nz_file == _TRUE_) {
+
+      class_test((z<ptr->nz_z[0]) || (z>ptr->nz_z[ptr->nz_size-1]),
+                 ptr->error_message,
+                 "Your input file for the selection function only covers the redhsift range [%f : %f]. However, your input for the selection function requires z=%f",
+                 ptr->nz_z[0],
+                 ptr->nz_z[ptr->nz_size-1],
+                 z);
+
+      class_call(array_interpolate_spline(
+                                          ptr->nz_z,
+                                          ptr->nz_size,
+                                          ptr->nz_nz,
+                                          ptr->nz_ddnz,
+                                          1,
+                                          z,
+                                          &last_index,
+                                          &dNdz,
+                                          1,
+                                          ptr->error_message),
+                 ptr->error_message,
+                 ptr->error_message);
+    }
+    else {
+
+      class_call(transfer_dNdz_analytic(ptr,
+                                        z,
+                                        &dNdz,
+                                        &dln_dNdz_dz),
+                 ptr->error_message,
+                 ptr->error_message);
+    }
+
+    *selection *= dNdz;
+  }
+
+
   /* get here only if selection type was recognized */
-  class_stop(ptr->error_message,
-             "invalid choice of selection function");
+  //class_stop(ptr->error_message,
+  //           "invalid choice of selection function");
 
   return _SUCCESS_;
 }
@@ -2997,10 +2994,6 @@ int transfer_selection_sampling(
              ptr->error_message,
              ptr->error_message);
 
-  class_test(tau_size <= 0,
-             ptr->error_message,
-             "should be at least one");
-
   /* case selection == dirac */
   if (tau_min == tau_max) {
     class_test(tau_size !=1,
@@ -3011,10 +3004,9 @@ int transfer_selection_sampling(
   /* for other cases (gaussian, tophat...) define new sampled values
      of (tau0-tau) with even spacing */
   else {
-    for (index_tau=0; index_tau<tau_size-1; index_tau++) {
+    for (index_tau=0; index_tau<tau_size; index_tau++) {
       tau0_minus_tau[index_tau]=pba->conformal_age-tau_min-((double)index_tau)/((double)tau_size-1.)*(tau_max-tau_min);
     }
-    tau0_minus_tau[tau_size-1]=pba->conformal_age-tau_max;
   }
 
   return _SUCCESS_;
@@ -3179,15 +3171,7 @@ int transfer_selection_times(
 
   /* lower edge of time interval for this bin */
 
-  if (ppt->selection==gaussian) {
-    z = ppt->selection_mean[bin]+ppt->selection_width[bin]*ppr->selection_cut_at_sigma;
-  }
-  if (ppt->selection==tophat) {
-    z = ppt->selection_mean[bin]+(1.+ppr->selection_cut_at_sigma*ppr->selection_tophat_edge)*ppt->selection_width[bin];
-  }
-  if (ppt->selection==dirac) {
-    z = ppt->selection_mean[bin];
-  }
+  z = ppt->selection_functions[bin].z_max;
 
   class_call(background_tau_of_z(pba,
                                  z,
@@ -3197,15 +3181,7 @@ int transfer_selection_times(
 
   /* higher edge of time interval for this bin */
 
-  if (ppt->selection==gaussian) {
-    z = MAX(ppt->selection_mean[bin]-ppt->selection_width[bin]*ppr->selection_cut_at_sigma,0.);
-  }
-  if (ppt->selection==tophat) {
-    z = MAX(ppt->selection_mean[bin]-(1.+ppr->selection_cut_at_sigma*ppr->selection_tophat_edge)*ppt->selection_width[bin],0.);
-  }
-  if (ppt->selection==dirac) {
-    z = ppt->selection_mean[bin];
-  }
+  z = ppt->selection_functions[bin].z_min;
 
   class_call(background_tau_of_z(pba,
                                  z,
@@ -3215,13 +3191,16 @@ int transfer_selection_times(
 
   /* central value of time interval for this bin */
 
-  z = MAX(ppt->selection_mean[bin],0.);
+  z = ppt->selection_functions[bin].selection_mean;
 
   class_call(background_tau_of_z(pba,
                                  z,
                                  tau_mean),
              pba->error_message,
              ppt->error_message);
+
+  //printf("Bin %d Z min mid max: %f %f %f\n",bin,ppt->selection_functions[bin].z_min,ppt->selection_functions[bin].selection_mean,ppt->selection_functions[bin].z_max);
+  //printf("Bin %d Tau min mid max: %f %f %f\n",bin,*tau_min,*tau_mean,*tau_max);
 
   return _SUCCESS_;
 
@@ -3489,37 +3468,37 @@ int transfer_use_limber(
       if ((ppt->has_cl_cmb_lensing_potential == _TRUE_) && (index_tt == ptr->index_tt_lcmb) && (l>ppr->l_switch_limber)) {
         *use_limber = _TRUE_;
       }
-      if (_index_tt_in_range_(ptr->index_tt_density, ppt->selection_num, ppt->has_nc_density) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_mean[index_tt-ptr->index_tt_density])) {
+      if (_index_tt_in_range_(ptr->index_tt_density, ppt->selection_num, ppt->has_nc_density) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_functions[index_tt-ptr->index_tt_density].selection_mean)) {
         if (ppt->selection != dirac) *use_limber = _TRUE_;
       }
-      if (_index_tt_in_range_(ptr->index_tt_rsd,     ppt->selection_num, ppt->has_nc_rsd) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_mean[index_tt-ptr->index_tt_rsd])) {
+      if (_index_tt_in_range_(ptr->index_tt_rsd,     ppt->selection_num, ppt->has_nc_rsd) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_functions[index_tt-ptr->index_tt_rsd].selection_mean)) {
         if (ppt->selection != dirac) *use_limber = _TRUE_;
       }
-      if (_index_tt_in_range_(ptr->index_tt_d0,      ppt->selection_num, ppt->has_nc_rsd) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_mean[index_tt-ptr->index_tt_d0])) {
+      if (_index_tt_in_range_(ptr->index_tt_d0,      ppt->selection_num, ppt->has_nc_rsd) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_functions[index_tt-ptr->index_tt_d0].selection_mean)) {
         if (ppt->selection != dirac) *use_limber = _TRUE_;
       }
-      if (_index_tt_in_range_(ptr->index_tt_d1,      ppt->selection_num, ppt->has_nc_rsd) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_mean[index_tt-ptr->index_tt_d1])) {
+      if (_index_tt_in_range_(ptr->index_tt_d1,      ppt->selection_num, ppt->has_nc_rsd) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_functions[index_tt-ptr->index_tt_d1].selection_mean)) {
         if (ppt->selection != dirac) *use_limber = _TRUE_;
       }
-      if (_index_tt_in_range_(ptr->index_tt_nc_lens, ppt->selection_num, ppt->has_nc_lens) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_mean[index_tt-ptr->index_tt_nc_lens])) {
+      if (_index_tt_in_range_(ptr->index_tt_nc_lens, ppt->selection_num, ppt->has_nc_lens) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_functions[index_tt-ptr->index_tt_nc_lens].selection_mean)) {
         if (ppt->selection != dirac) *use_limber = _TRUE_;
       }
-      if (_index_tt_in_range_(ptr->index_tt_nc_g1, ppt->selection_num, ppt->has_nc_gr) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_mean[index_tt-ptr->index_tt_nc_g1])) {
+      if (_index_tt_in_range_(ptr->index_tt_nc_g1, ppt->selection_num, ppt->has_nc_gr) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_functions[index_tt-ptr->index_tt_nc_g1].selection_mean)) {
         if (ppt->selection != dirac) *use_limber = _TRUE_;
       }
-      if (_index_tt_in_range_(ptr->index_tt_nc_g2, ppt->selection_num, ppt->has_nc_gr) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_mean[index_tt-ptr->index_tt_nc_g2])) {
+      if (_index_tt_in_range_(ptr->index_tt_nc_g2, ppt->selection_num, ppt->has_nc_gr) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_functions[index_tt-ptr->index_tt_nc_g2].selection_mean)) {
         if (ppt->selection != dirac) *use_limber = _TRUE_;
       }
-      if (_index_tt_in_range_(ptr->index_tt_nc_g3, ppt->selection_num, ppt->has_nc_gr) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_mean[index_tt-ptr->index_tt_nc_g3])) {
+      if (_index_tt_in_range_(ptr->index_tt_nc_g3, ppt->selection_num, ppt->has_nc_gr) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_functions[index_tt-ptr->index_tt_nc_g3].selection_mean)) {
         if (ppt->selection != dirac) *use_limber = _TRUE_;
       }
-      if (_index_tt_in_range_(ptr->index_tt_nc_g4, ppt->selection_num, ppt->has_nc_gr) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_mean[index_tt-ptr->index_tt_nc_g4])) {
+      if (_index_tt_in_range_(ptr->index_tt_nc_g4, ppt->selection_num, ppt->has_nc_gr) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_functions[index_tt-ptr->index_tt_nc_g4].selection_mean)) {
         if (ppt->selection != dirac) *use_limber = _TRUE_;
       }
-      if (_index_tt_in_range_(ptr->index_tt_nc_g5, ppt->selection_num, ppt->has_nc_gr) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_mean[index_tt-ptr->index_tt_nc_g5])) {
+      if (_index_tt_in_range_(ptr->index_tt_nc_g5, ppt->selection_num, ppt->has_nc_gr) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_functions[index_tt-ptr->index_tt_nc_g5].selection_mean)) {
         if (ppt->selection != dirac) *use_limber = _TRUE_;
       }
-      if (_index_tt_in_range_(ptr->index_tt_lensing, ppt->selection_num, ppt->has_cl_lensing_potential) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_mean[index_tt-ptr->index_tt_lensing])) {
+      if (_index_tt_in_range_(ptr->index_tt_lensing, ppt->selection_num, ppt->has_cl_lensing_potential) && (l>=ppr->l_switch_limber_for_cl_density_over_z*ppt->selection_functions[index_tt-ptr->index_tt_lensing].selection_mean)) {
         *use_limber = _TRUE_;
       }
     }
@@ -4402,8 +4381,7 @@ int transfer_radial_function(
     //s2 = sqrt(1.0-3.0*K/k2);
     factor = 1.0;
     for (j=0; j<x_size; j++)
-      radial_function[x_size-1-j] = factor*absK_over_k2*d2Phi[j]*rescale_argument*rescale_argument*rescale_function[j];
-      // Note: in previous line there was a missing factor absK_over_k2 until version 2.4.3. Credits Francesco Montanari.
+      radial_function[x_size-1-j] = factor*d2Phi[j]*rescale_argument*rescale_argument*rescale_function[j];
     break;
   }
 
@@ -4593,15 +4571,15 @@ int transfer_global_selection_read(
 
     /* infer dlog(dN/dz)/dz from dN/dz */
     ptr->nz_evo_dlog_nz[0] =
-      (log(ptr->nz_evo_nz[1])-log(ptr->nz_evo_nz[0]))
+      (ptr->nz_evo_nz[1]-ptr->nz_evo_nz[0])
       /(ptr->nz_evo_z[1]-ptr->nz_evo_z[0]);
     for (row=1; row<ptr->nz_evo_size-1; row++){
       ptr->nz_evo_dlog_nz[row] =
-        (log(ptr->nz_evo_nz[row+1])-log(ptr->nz_evo_nz[row-1]))
+        (ptr->nz_evo_nz[row+1]-ptr->nz_evo_nz[row-1])
         /(ptr->nz_evo_z[row+1]-ptr->nz_evo_z[row-1]);
     }
     ptr->nz_evo_dlog_nz[ptr->nz_evo_size-1] =
-      (log(ptr->nz_evo_nz[ptr->nz_evo_size-1])-log(ptr->nz_evo_nz[ptr->nz_evo_size-2]))
+      (ptr->nz_evo_nz[ptr->nz_evo_size-1]-ptr->nz_evo_nz[ptr->nz_evo_size-2])
       /(ptr->nz_evo_z[ptr->nz_evo_size-1]-ptr->nz_evo_z[ptr->nz_evo_size-2]);
 
     /* to test that the file is read:

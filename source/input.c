@@ -205,7 +205,7 @@ int input_init(
                ErrorMsg errmsg
                ) {
 
-  int flag1;
+  int flag1, flag2, flag3;
   double param1;
   int counter, index_target, i;
   double * unknown_parameter;
@@ -562,13 +562,16 @@ int input_read_parameters(
 
   /** - define local variables */
 
-  int flag1,flag2,flag3;
+  int flag1,flag2,flag3,flag4;
+  int selection_nums_gauss;
   double param1,param2,param3;
   int N_ncdm=0,n,entries_read;
-  int int1,fileentries;
+  int int1,int2,int3,int4,fileentries;
   double scf_lambda;
   double fnu_factor;
-  double * pointer1;
+  double * pointer1, * pointer2, * pointer3;
+  int * pointer4;
+  char * pointerc;
   char string1[_ARGUMENT_LENGTH_MAX_];
   double k1=0.;
   double k2=0.;
@@ -585,7 +588,7 @@ int input_read_parameters(
 
   double Omega_tot;
 
-  int i;
+  int i, k;
 
   double sigma_B; /**< Stefan-Boltzmann constant in W/m^2/K^4 = Kg/K^4/s^3 */
 
@@ -901,7 +904,7 @@ int input_read_parameters(
       }
     }
     /* Read (optional) p.s.d.-parameters:*/
-    parser_read_list_of_doubles(pfc,
+    parser_read_list_of_strings(pfc,
                                 "ncdm_psd_parameters",
                                 &entries_read,
                                 &(pba->ncdm_psd_parameters),
@@ -1169,40 +1172,28 @@ int input_read_parameters(
 
   /* energy injection parameters from CDM annihilation/decay */
   class_read_double("annihilation",pth->annihilation);
-
-  if (pth->annihilation > 0.) {
-
-    class_read_double("annihilation_variation",pth->annihilation_variation);
-    class_read_double("annihilation_z",pth->annihilation_z);
-    class_read_double("annihilation_zmax",pth->annihilation_zmax);
-    class_read_double("annihilation_zmin",pth->annihilation_zmin);
-    class_read_double("annihilation_f_halo",pth->annihilation_f_halo);
-    class_read_double("annihilation_z_halo",pth->annihilation_z_halo);
-
-    class_call(parser_read_string(pfc,
-                                  "on the spot",
-                                  &(string1),
-                                  &(flag1),
-                                  errmsg),
-               errmsg,
-               errmsg);
-
-    if (flag1 == _TRUE_) {
-      if ((strstr(string1,"y") != NULL) || (strstr(string1,"Y") != NULL)) {
-        pth->has_on_the_spot = _TRUE_;
-      }
-      else {
-        if ((strstr(string1,"n") != NULL) || (strstr(string1,"N") != NULL)) {
-          pth->has_on_the_spot = _FALSE_;
-        }
-        else {
-          class_stop(errmsg,"incomprehensible input '%s' for the field 'on the spot'",string1);
-        }
-      }
-    }
-  }
-
   class_read_double("decay",pth->decay);
+  class_read_double("annihilation_variation",pth->annihilation_variation);
+  class_read_double("annihilation_z",pth->annihilation_z);
+  class_read_double("annihilation_zmax",pth->annihilation_zmax);
+  class_read_double("annihilation_zmin",pth->annihilation_zmin);
+  class_read_double("annihilation_f_halo",pth->annihilation_f_halo);
+  class_read_double("annihilation_z_halo",pth->annihilation_z_halo);
+
+  class_call(parser_read_string(pfc,
+                                "on the spot",
+                                &(string1),
+                                &(flag1),
+                                errmsg),
+             errmsg,
+             errmsg);
+
+  if ((flag1 == _TRUE_) && ((strstr(string1,"y") != NULL) || (strstr(string1,"Y") != NULL))) {
+    pth->has_on_the_spot = _TRUE_;
+  }
+  else {
+    pth->has_on_the_spot = _FALSE_;
+  }
 
   /** (c) define which perturbations and sources should be computed, and down to which scale */
 
@@ -2054,7 +2045,13 @@ int input_read_parameters(
                errmsg);
 
     if (flag1 == _TRUE_) {
-      if (strstr(string1,"gaussian") != NULL) {
+      if (strstr(string1,"histogram") != NULL) {
+        ppt->selection=histogram;
+      }
+      else if (strstr(string1,"multigaussian") != NULL) {
+        ppt->selection=multigaussian;
+      }
+      else if (strstr(string1,"gaussian") != NULL) {
         ppt->selection=gaussian;
       }
       else if (strstr(string1,"tophat") != NULL) {
@@ -2068,41 +2065,96 @@ int input_read_parameters(
       }
     }
 
-    class_call(parser_read_list_of_doubles(pfc,
-                                           "selection_mean",
-                                           &(int1),
-                                           &(pointer1),
-                                           &flag1,
-                                           errmsg),
-               errmsg,
-               errmsg);
+    int input_verbose = 0;
+    class_read_int("input_verbose",input_verbose);
 
-    if ((flag1 == _TRUE_) && (int1>0)) {
+    if (ppt->selection==histogram){
 
-      class_test(int1 > _SELECTION_NUM_MAX_,
-                 errmsg,
-                 "you want to compute density Cl's for %d different bins, hence you should increase _SELECTION_NUM_MAX_ in include/transfer.h to at least this number",
-                 int1);
+      class_read_int("selection_num",ppt->selection_num);
 
-      ppt->selection_num = int1;
-      for (i=0; i<int1; i++) {
-        class_test((pointer1[i] < 0.) || (pointer1[i] > 1000.),
-                   errmsg,
-                   "input of selection functions: you asked for a mean redshift equal to %e, sounds odd",
-                   pointer1[i]);
-        ppt->selection_mean[i] = pointer1[i];
+      char strname[1024], fname[1024];
+      FILE * input_file;
+      int row, status;
+      double tmp1,tmp2;
+
+      for (i=0; i<ppt->selection_num; i++) {
+
+        sprintf(strname,"%s%d%s","selection_",i+1,"_file");
+        parser_read_string(pfc, strname, &(fname), &(flag1), errmsg);
+        if (input_verbose > 0)
+          printf("> Opening %s\n",fname);
+
+        input_file = fopen(fname,"r");
+        class_test(input_file == NULL,
+                   ptr->error_message,
+                   "Could not open file %s!",ptr->nz_file_name);
+        /* Find size of table */
+        for (row=0,status=2; status==2; row++){
+          status = fscanf(input_file,"%lf %lf",&tmp1,&tmp2);
+        }
+        rewind(input_file);
+
+        ptr->nz_size = row-1;
+        ppt->selection_functions[i].hist_size = row-1;
+        /* Allocate room for interpolation table */
+        class_alloc(ppt->selection_functions[i].hist_z,sizeof(double)*ptr->nz_size,ptr->error_message);
+        class_alloc(ppt->selection_functions[i].hist_nz,sizeof(double)*ptr->nz_size,ptr->error_message);
+        class_alloc(ppt->selection_functions[i].hist_ddnz,sizeof(double)*ptr->nz_size,ptr->error_message);
+
+        for (row=0; row<ptr->nz_size; row++){
+          status = fscanf(input_file,"%lf %lf",
+                          &ppt->selection_functions[i].hist_z[row],
+                          &ppt->selection_functions[i].hist_nz[row]);
+        }
+        double thresh = 200;
+        double nzmax = 0.0;
+        for (row=0; row<ptr->nz_size; row++)
+          nzmax = MAX(nzmax, ppt->selection_functions[i].hist_nz[row]);
+        int imax = 0;
+        double count = 0.0;
+        ppt->selection_functions[i].selection_mean = 0.0;
+        for (row=0; row<ptr->nz_size; row++){
+          if(ppt->selection_functions[i].hist_nz[row] > nzmax / thresh){
+            ppt->selection_functions[i].selection_mean += ppt->selection_functions[i].hist_z[row] * ppt->selection_functions[i].hist_nz[row];
+            count += ppt->selection_functions[i].hist_nz[row];
+          }
+          //else { ppt->selection_functions[i].hist_nz[row] = 0.0; }
+          if(ppt->selection_functions[i].hist_nz[row] == nzmax){
+            imax = row;
+          }
+        }
+        ppt->selection_functions[i].selection_mean /= count;
+
+        for (row=0; row<ptr->nz_size; row++){
+          ppt->selection_functions[i].hist_nz[row] /= nzmax;
+          if (input_verbose > 0) {
+            printf("%d %d: (z,dNdz) = (%f,%f)\n",i,row,
+              ppt->selection_functions[i].hist_z[row],
+              ppt->selection_functions[i].hist_nz[row]);
+          }
+        }
+
+        ppt->selection_functions[i].z_min = ppt->selection_functions[i].hist_z[1];
+        ppt->selection_functions[i].z_max = ppt->selection_functions[i].hist_z[ptr->nz_size-2];
+        ppt->selection_functions[i].selection_width = (ppt->selection_functions[i].z_max-ppt->selection_functions[i].z_min)/4.0;
+        fclose(input_file);
+
+        /* Call spline interpolation: */
+        class_call(array_spline_table_lines(ppt->selection_functions[i].hist_z,
+                                            ppt->selection_functions[i].hist_size,
+                                            ppt->selection_functions[i].hist_nz,
+                                            1,
+                                            ppt->selection_functions[i].hist_ddnz,
+                                            _SPLINE_EST_DERIV_,
+                                            ptr->error_message),
+                   ptr->error_message,
+                   ptr->error_message);
+
       }
-      free(pointer1);
-      /* first set all widths to default; correct eventually later */
-      for (i=1; i<int1; i++) {
-        class_test(ppt->selection_mean[i]<=ppt->selection_mean[i-1],
-                   errmsg,
-                   "input of selection functions: the list of mean redshifts must be passed in growing order; you entered %e before %e",ppt->selection_mean[i-1],ppt->selection_mean[i]);
-        ppt->selection_width[i] = ppt->selection_width[0];
-      }
+    } else if (ppt->selection==gaussian || ppt->selection==tophat){// gaussian or top hat
 
       class_call(parser_read_list_of_doubles(pfc,
-                                             "selection_width",
+                                             "selection_mean",
                                              &(int1),
                                              &(pointer1),
                                              &flag1,
@@ -2110,25 +2162,63 @@ int input_read_parameters(
                  errmsg,
                  errmsg);
 
-      if ((flag1 == _TRUE_) && (int1>0)) {
+      class_call(parser_read_list_of_doubles(pfc,
+                                             "selection_width",
+                                             &(int2),
+                                             &(pointer2),
+                                             &flag2,
+                                             errmsg),
+                 errmsg,
+                 errmsg);
 
-        if (int1==1) {
+      if ((flag1 == _TRUE_) && (int1>0) && (flag2 == _TRUE_) && (int2>0)) {
+        ppt->selection_num = int1;
+        for (i=0; i<int1; i++) {
+          ppt->selection_functions[i].selection_mean = pointer1[i];
+        }
+        if (int2==1) {
           for (i=0; i<ppt->selection_num; i++) {
-            ppt->selection_width[i] = pointer1[0];
+            ppt->selection_functions[i].selection_width = pointer2[0];
           }
         }
-        else if (int1==ppt->selection_num) {
-          for (i=0; i<int1; i++) {
-            ppt->selection_width[i] = pointer1[i];
+        else if (int2==ppt->selection_num) {
+          for (i=0; i<int2; i++) {
+            ppt->selection_functions[i].selection_width = pointer2[i];
           }
         }
         else {
           class_stop(errmsg,
                      "In input for selection function, you asked for %d bin centers and %d bin widths; number of bins unclear; you should pass either one bin width (common to all bins) or %d bin witdths",
-                     ppt->selection_num,int1,ppt->selection_num);
+                     ppt->selection_num,int2,ppt->selection_num);
         }
-        free(pointer1);
       }
+      printf("Window mean and width: %f %f\n", ppt->selection_functions[i].selection_mean, ppt->selection_functions[i].selection_width);
+      free(pointer1);
+      free(pointer2);
+
+    } else {// multigaussian
+
+
+      class_read_int("selection_num",ppt->selection_num);
+      char thename[100];
+      for (i=0; i<ppt->selection_num; i++) {
+        sprintf(thename,"%s%d%s","selection_",i+1,"_num");
+        class_read_int(thename, ppt->selection_functions[i].gaussian_num);
+        for (k=0; k<ppt->selection_functions[i].gaussian_num; k++) {
+          sprintf(thename,"%s%d%s%d","selection_",i+1,"_amp_",k+1);
+          class_read_double(thename, ppt->selection_functions[i].gaussian_amp[k]);
+          sprintf(thename,"%s%d%s%d","selection_",i+1,"_mean_",k+1);
+          class_read_double(thename, ppt->selection_functions[i].gaussian_means[k]);
+          sprintf(thename,"%s%d%s%d","selection_",i+1,"_width_",k+1);
+          class_read_double(thename, ppt->selection_functions[i].gaussian_widths[k]);
+          printf("Read kernel %d %d : %f %f %f\n",i+1,k+1,
+            ppt->selection_functions[i].gaussian_amp[k],
+            ppt->selection_functions[i].gaussian_means[k],
+            ppt->selection_functions[i].gaussian_widths[k]);
+        }
+      }
+
+
     }
 
     if (ppt->selection_num>1) {
@@ -2173,9 +2263,15 @@ int input_read_parameters(
       }
     }
 
-    class_read_double("bias",ptr->bias);
-    class_read_double("s_bias",ptr->s_bias);
-
+    char bname[100];
+    for (i=0; i<ppt->selection_num; i++) {
+      sprintf(bname,"%s%d","bias_",i+1);
+      class_read_double(bname,ppt->selection_functions[i].bias);
+      sprintf(bname,"%s%d","s_bias_",i+1);
+      class_read_double(bname,ppt->selection_functions[i].s_bias);
+      if (input_verbose > 0)
+        printf("Selection %i : Biases : %f %f\n",i,ppt->selection_functions[i].bias,ppt->selection_functions[i].s_bias);
+    }
 
   }
 
@@ -2483,6 +2579,49 @@ int input_read_parameters(
   class_read_double("selection_sampling",ppr->selection_sampling);
   class_read_double("selection_sampling_bessel",ppr->selection_sampling_bessel);
   class_read_double("selection_tophat_edge",ppr->selection_tophat_edge);
+
+  int input_verbose = 0;
+  class_read_int("input_verbose",input_verbose);
+
+  for (i=0; i<ppt->selection_num; i++){
+    if (ppt->selection!=histogram) {
+      ppt->selection_functions[i].z_min = 1.0;
+      ppt->selection_functions[i].z_max = 0.0;
+    }
+    if (ppt->selection==multigaussian) {
+      ppt->selection_functions[i].selection_mean = 0.0;
+      double norm = 0.0;
+      ppt->selection_functions[i].selection_width = 0.1;
+      for (k=0; k<ppt->selection_functions[i].gaussian_num; k++){
+        ppt->selection_functions[i].selection_mean += ppt->selection_functions[i].gaussian_amp[k] * ppt->selection_functions[i].gaussian_means[k];
+        norm += ppt->selection_functions[i].gaussian_amp[k];
+        ppt->selection_functions[i].z_min = MIN(ppt->selection_functions[i].z_min,
+          ppt->selection_functions[i].gaussian_means[k]-ppt->selection_functions[i].gaussian_widths[k]*ppr->selection_cut_at_sigma);
+        ppt->selection_functions[i].z_max = MAX(ppt->selection_functions[i].z_max,
+          ppt->selection_functions[i].gaussian_means[k]+ppt->selection_functions[i].gaussian_widths[k]*ppr->selection_cut_at_sigma);
+      }
+      ppt->selection_functions[i].selection_mean /= norm;
+    }
+    if (ppt->selection==gaussian) {
+      ppt->selection_functions[i].z_min = MIN(ppt->selection_functions[i].z_min,
+        ppt->selection_functions[i].selection_mean-ppt->selection_functions[i].selection_width*ppr->selection_cut_at_sigma);
+      ppt->selection_functions[i].z_max = MAX(ppt->selection_functions[i].z_max,
+        ppt->selection_functions[i].selection_mean+ppt->selection_functions[i].selection_width*ppr->selection_cut_at_sigma);
+    }
+    if (ppt->selection==tophat) {
+      ppt->selection_functions[i].z_min = MIN(ppt->selection_functions[i].z_min,
+        ppt->selection_functions[i].selection_mean-(1.+ppr->selection_cut_at_sigma*ppr->selection_tophat_edge)*ppt->selection_functions[i].selection_width);
+      ppt->selection_functions[i].z_max = MAX(ppt->selection_functions[i].z_max,
+        ppt->selection_functions[i].selection_mean+(1.+ppr->selection_cut_at_sigma*ppr->selection_tophat_edge)*ppt->selection_functions[i].selection_width);
+    }
+    if (ppt->selection==dirac) {
+      ppt->selection_functions[i].z_min = ppt->selection_functions[i].selection_mean;
+      ppt->selection_functions[i].z_max = ppt->selection_functions[i].selection_mean;
+    }
+    ppt->selection_functions[i].z_min = MAX(0.0, ppt->selection_functions[i].z_min);
+    if (input_verbose > 0)
+      printf("Z min-max of %ith selection fct: %f %f %f\n",i+1,ppt->selection_functions[i].z_min,ppt->selection_functions[i].selection_mean,ppt->selection_functions[i].z_max);
+  }
 
   /** h.7. parameters related to nonlinear calculations */
 
@@ -2829,8 +2968,8 @@ int input_default_params(
 
   ppt->selection_num=1;
   ppt->selection=gaussian;
-  ppt->selection_mean[0]=1.;
-  ppt->selection_width[0]=0.1;
+  ppt->selection_functions[0].selection_mean=1.;
+  ppt->selection_functions[0].selection_width=0.1;
   ptr->lcmb_rescale=1.;
   ptr->lcmb_pivot=0.1;
   ptr->lcmb_tilt=0.;
@@ -2839,8 +2978,6 @@ int input_default_params(
   ptr->has_nz_file = _FALSE_;
   ptr->has_nz_evo_analytic = _FALSE_;
   ptr->has_nz_evo_file = _FALSE_;
-  ptr->bias = 1.;
-  ptr->s_bias = 0.;
 
   /** - output structure */
 
@@ -3093,12 +3230,7 @@ int input_default_precision ( struct precision * ppr ) {
   ppr->transfer_neglect_late_source = 400.;
 
   ppr->l_switch_limber=10.;
-  // For density Cl, we recommend not to use the Limber approximation
-  // at all, and hence to put here a very large number (e.g. 10000); but
-  // if you have wide and smooth selection functions you may wish to
-  // use it; then 30 might be OK
   ppr->l_switch_limber_for_cl_density_over_z=30.;
-
 
   ppr->selection_cut_at_sigma=5.;
   ppr->selection_sampling=50;

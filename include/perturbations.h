@@ -65,8 +65,8 @@ enum possible_gauges {
 /**
  * maximumu number and types of selection function (for bins of matter density or cosmic shear)
  */
-#define _SELECTION_NUM_MAX_ 100
-enum selection_type {gaussian,tophat,dirac};
+#define _SELECTION_NUM_MAX_ 10
+enum selection_type {gaussian,tophat,dirac,multigaussian,histogram,external};
 
 //@}
 
@@ -149,8 +149,25 @@ struct perturbs
   int selection_num;                            /**< number of selection functions
                                                    (i.e. bins) for matter density Cls */
   enum selection_type selection;                /**< type of selection functions */
-  double selection_mean[_SELECTION_NUM_MAX_]; /**< centers of selection functions */
-  double selection_width[_SELECTION_NUM_MAX_];  /**< widths of selection functions */
+
+  /**< Additional parameters needed if selection functions are multigaussian or histogram */
+  struct selection_function {
+    double bias;
+    double s_bias;
+    #define _GAUSSIAN_NUM_MAX_ 10
+    double selection_mean;  /**< centers of selection functions */
+    double selection_width; /**< widths of selection functions */
+    double z_min, z_max;
+    int gaussian_num;
+    double gaussian_amp[_GAUSSIAN_NUM_MAX_];
+    double gaussian_means[_GAUSSIAN_NUM_MAX_];
+    double gaussian_widths[_GAUSSIAN_NUM_MAX_];
+    double * hist_z;
+    double * hist_nz;
+    double * hist_ddnz;
+    int hist_size;
+  } selection_functions[_SELECTION_NUM_MAX_];
+
 
   int switch_sw;   /**< in temperature calculation, do we want to include the intrinsic temperature + Sachs Wolfe term? */
   int switch_eisw; /**< in temperature calculation, do we want to include the early integrated Sachs Wolfe term? */

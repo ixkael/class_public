@@ -428,6 +428,13 @@ int perturb_free(
 
   int index_md,index_ic,index_type;
   int filenum;
+  int i;
+
+  for (i = 0; i < ppt->selection_num; i++){
+    free(ppt->selection_functions[i].hist_z);
+    free(ppt->selection_functions[i].hist_nz);
+    free(ppt->selection_functions[i].hist_ddnz);
+  }
 
   if (ppt->has_perturbations == _TRUE_) {
 
@@ -1282,7 +1289,7 @@ int perturb_get_k_list(
       if ((ppt->has_cl_number_count == _TRUE_) || (ppt->has_cl_lensing_potential == _TRUE_)) {
 
         class_call(background_tau_of_z(pba,
-                                       ppt->selection_mean[0],
+                                       ppt->selection_functions[0].selection_mean,
                                        &tau1),
                    pba->error_message,
                    ppt->error_message);
@@ -2284,8 +2291,6 @@ int perturb_solve(
   ppaw.k = k;
   ppaw.ppw = ppw;
   ppaw.ppw->inter_mode = pba->inter_closeby;
-  ppaw.ppw->last_index_back = 0;
-  ppaw.ppw->last_index_thermo = 0;
 
   /** - check whether we need to print perturbations to a file for this wavenumber */
 
@@ -4699,14 +4704,6 @@ int perturb_approximations(
       /** (b.2.a) compute recombination time scale for photons, \f$ \tau_{\gamma} = 1/ \kappa' \f$ */
       tau_c = 1./ppw->pvecthermo[pth->index_th_dkappa];
 
-      class_test(tau_c < 0.,
-                 ppt->error_message,
-                 "tau_c = 1/kappa' should always be positive unless there is something wrong in the thermodynamics module. However you have here tau_c=%e at z=%e, conformal time=%e x_e=%e. (This could come from the interpolation of a too poorly sampled reionisation history?).\n",
-                 tau_c,
-                 1./ppw->pvecback[pba->index_bg_a]-1.,
-                 tau,
-                 ppw->pvecthermo[pth->index_th_xe]);
-
       /** (b.2.b) check whether tight-coupling approximation should be on */
       if ((tau_c/tau_h < ppr->tight_coupling_trigger_tau_c_over_tau_h) &&
           (tau_c/tau_k < ppr->tight_coupling_trigger_tau_c_over_tau_k)) {
@@ -5132,16 +5129,8 @@ int perturb_einstein(
        really want gauge-dependent results) */
 
     if (ppt->has_source_delta_m == _TRUE_) {
-      ppw->delta_m += 3. *ppw->pvecback[pba->index_bg_a]*ppw->pvecback[pba->index_bg_H] * ppw->theta_m/k2;
-      // note: until 2.4.3 there was a typo, the factor was (-2 H'/H) instead
-      // of (3 aH). There is the same typo in the CLASSgal paper
-      // 1307.1459v1,v2,v3. It came from a confusion between (1+w_total)
-      // and (1+w_matter)=1 [the latter is the relevant one here].
-      //
-      // note2: at this point this gauge-invariant variable is only
-      // valid if all matter components are pressureless and
-      // stable. This relation will be generalised soon to the case
-      // of decaying dark matter.
+      //ppw->delta_m += 3. *ppw->pvecback[pba->index_bg_a]*ppw->pvecback[pba->index_bg_H] * ppw->theta_m/k2;
+      ppw->delta_m -= 2.*ppw->pvecback[pba->index_bg_H_prime]/ppw->pvecback[pba->index_bg_H] * ppw->theta_m/k2;
     }
 
     if (ppt->has_source_theta_m == _TRUE_) {

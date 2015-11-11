@@ -52,10 +52,6 @@ struct transfers {
   double lcmb_pivot;   /**< if lcmb_tilt non-zero, corresponding pivot
                           scale */
 
-  double bias;         /**< light-to-mass bias in the transfer function of density number count */
-
-  double s_bias;       /**< magnification bias in the transfer function of density number count */
-
   short has_nz_file;    /**< Has dN/dz (selection function) input file? */
   short has_nz_analytic; /**< Use analytic form for dN/dz (selection function) distribution? */
   FileName nz_file_name; /**< dN/dz (selection function) input file name */
